@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────
-   HoboSky v0.1.0 — PostCard Component
+   HoboSky v0.2.0 — PostCard Component
    ────────────────────────────────────────────────────────── */
 
 import React, { useState, useCallback } from 'react';
@@ -11,7 +11,6 @@ import {
   heartOutline,
   heart,
   bookmarkOutline,
-  bookmark,
   repeat,
   ellipsisHorizontal,
 } from 'ionicons/icons';
@@ -24,6 +23,8 @@ import {
   extractDomain,
   DEFAULT_AVATAR,
 } from '../utils';
+import ImageLightbox from './ImageLightbox';
+import PostActionsSheet from './PostActionsSheet';
 
 interface PostCardProps {
   feedItem?: FeedViewPost;
@@ -49,11 +50,22 @@ export default function PostCard({
   const [repostUri, setRepostUri] = useState(post?.viewer?.repost || '');
   const [repostCount, setRepostCount] = useState(post?.repostCount ?? 0);
 
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [lightboxImages, setLightboxImages] = useState<
+    { thumb: string; fullsize: string; alt: string }[]
+  >([]);
+
+  const [actionsOpen, setActionsOpen] = useState(false);
+
   if (!post) return null;
 
   const record = post.record;
   const reason = feedItem?.reason;
-  const isRepost = reason && '$type' in reason && reason.$type === 'app.bsky.feed.defs#reasonRepost';
+  const isRepost =
+    reason &&
+    '$type' in reason &&
+    reason.$type === 'app.bsky.feed.defs#reasonRepost';
 
   const navigateToThread = useCallback(() => {
     const encoded = encodeURIComponent(post.uri);
@@ -133,6 +145,26 @@ export default function PostCard({
     [history, post.uri]
   );
 
+  const openLightbox = useCallback(
+    (
+      images: { thumb: string; fullsize: string; alt: string }[],
+      index: number
+    ) => {
+      setLightboxImages(images);
+      setLightboxIndex(index);
+      setLightboxOpen(true);
+    },
+    []
+  );
+
+  const handleMoreClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setActionsOpen(true);
+    },
+    []
+  );
+
   const textHtml = renderTextWithFacets(record.text, record.facets);
 
   return (
@@ -141,10 +173,13 @@ export default function PostCard({
         <div className="repost-indicator">
           <IonIcon icon={repeatOutline} />
           <span
-            onClick={(e) => navigateToProfile(e, (reason as { by: { did: string } }).by.did)}
+            onClick={(e) =>
+              navigateToProfile(e, (reason as { by: { did: string } }).by.did)
+            }
             style={{ cursor: 'pointer' }}
           >
-            {(reason as { by: { displayName?: string; handle: string } }).by.displayName ||
+            {(reason as { by: { displayName?: string; handle: string } }).by
+              .displayName ||
               (reason as { by: { handle: string } }).by.handle}{' '}
             reposted
           </span>
@@ -170,6 +205,18 @@ export default function PostCard({
             </span>
             <span className="post-handle">@{post.author.handle}</span>
             <span className="post-time">{timeAgo(post.indexedAt)}</span>
+            <button
+              className="post-action-btn"
+              onClick={handleMoreClick}
+              style={{
+                minWidth: 'auto',
+                padding: '4px 6px',
+                marginLeft: 2,
+                flexShrink: 0,
+              }}
+            >
+              <IonIcon icon={ellipsisHorizontal} style={{ fontSize: 16 }} />
+            </button>
           </div>
 
           {record.reply && !isThread && (
@@ -201,14 +248,22 @@ export default function PostCard({
                   const tag = target.getAttribute('data-tag');
                   if (tag) {
                     e.preventDefault();
-                    history.push(`/search?q=${encodeURIComponent('#' + tag)}`);
+                    history.push(
+                      `/search?q=${encodeURIComponent('#' + tag)}`
+                    );
                   }
                 }
               }}
             />
           )}
 
-          {post.embed && <EmbedContent embed={post.embed} history={history} />}
+          {post.embed && (
+            <EmbedContent
+              embed={post.embed}
+              history={history}
+              onOpenLightbox={openLightbox}
+            />
+          )}
 
           <div className="post-actions">
             <button className="post-action-btn reply-btn" onClick={handleReply}>
@@ -238,6 +293,20 @@ export default function PostCard({
           </div>
         </div>
       </div>
+
+      <ImageLightbox
+        images={lightboxImages}
+        initialIndex={lightboxIndex}
+        isOpen={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
+      />
+
+      <PostActionsSheet
+        isOpen={actionsOpen}
+        onDismiss={() => setActionsOpen(false)}
+        post={post}
+        onDeleted={() => window.location.reload()}
+      />
     </>
   );
 }
@@ -247,13 +316,17 @@ export default function PostCard({
 function EmbedContent({
   embed,
   history,
+  onOpenLightbox,
 }: {
   embed: EmbedView;
   history: ReturnType<typeof useHistory>;
+  onOpenLightbox: (
+    images: { thumb: string; fullsize: string; alt: string }[],
+    index: number
+  ) => void;
 }) {
   const type = embed.$type;
 
-  // Images
   if (type === 'app.bsky.embed.images#view' && embed.images) {
     const images = embed.images;
     return (
@@ -268,14 +341,22 @@ function EmbedContent({
             src={img.thumb}
             alt={img.alt || ''}
             loading="lazy"
-            onClick={() => window.open(img.fullsize, '_blank')}
+            onClick={() =>
+              onOpenLightbox(
+                images.map((im) => ({
+                  thumb: im.thumb,
+                  fullsize: im.fullsize,
+                  alt: im.alt,
+                })),
+                i
+              )
+            }
           />
         ))}
       </div>
     );
   }
 
-  // External link card
   if (type === 'app.bsky.embed.external#view' && embed.external) {
     const ext = embed.external;
     return (
@@ -300,7 +381,6 @@ function EmbedContent({
     );
   }
 
-  // Quote post embed
   if (type === 'app.bsky.embed.record#view' && embed.record) {
     const rec = embed.record.record;
     if (!rec || !('$type' in rec) || rec.$type !== 'app.bsky.embed.record#viewRecord') {
@@ -311,7 +391,6 @@ function EmbedContent({
       author: { did: string; displayName?: string; handle: string; avatar?: string };
       value: { text?: string };
     };
-
     return (
       <div
         className="embed-quote"
@@ -341,22 +420,23 @@ function EmbedContent({
     );
   }
 
-  // Record with media (quote + images)
   if (type === 'app.bsky.embed.recordWithMedia#view') {
     return (
       <>
-        {embed.media && <EmbedContent embed={embed.media} history={history} />}
+        {embed.media && (
+          <EmbedContent embed={embed.media} history={history} onOpenLightbox={onOpenLightbox} />
+        )}
         {embed.record && (
           <EmbedContent
             embed={{ $type: 'app.bsky.embed.record#view', record: embed.record }}
             history={history}
+            onOpenLightbox={onOpenLightbox}
           />
         )}
       </>
     );
   }
 
-  // Video embed
   if (type === 'app.bsky.embed.video#view') {
     if (embed.playlist) {
       return (

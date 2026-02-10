@@ -88,6 +88,8 @@ export interface PostEmbed {
   external?: ExternalEmbed;
   record?: StrongRef;
   media?: PostEmbed;
+  video?: BlobRef;
+  alt?: string;
 }
 
 export interface ImageEmbed {
@@ -352,4 +354,236 @@ export interface UploadBlobResponse {
 export interface CreateRecordResponse {
   uri: string;
   cid: string;
+}
+
+// ── Follows / Followers ─────────────────────────────────
+
+export interface FollowsResponse {
+  subject: ProfileViewBasic;
+  follows: ProfileViewBasic[];
+  cursor?: string;
+}
+
+export interface FollowersResponse {
+  subject: ProfileViewBasic;
+  followers: ProfileViewBasic[];
+  cursor?: string;
+}
+
+// ── Likes / Reposted-by / Quotes ────────────────────────
+
+export interface LikeItem {
+  createdAt: string;
+  indexedAt: string;
+  actor: ProfileViewBasic;
+}
+
+export interface GetLikesResponse {
+  uri: string;
+  cid?: string;
+  likes: LikeItem[];
+  cursor?: string;
+}
+
+export interface RepostedByResponse {
+  uri: string;
+  cid?: string;
+  repostedBy: ProfileViewBasic[];
+  cursor?: string;
+}
+
+export interface GetQuotesResponse {
+  uri: string;
+  cid?: string;
+  posts: PostView[];
+  cursor?: string;
+}
+
+// ── Video Upload ────────────────────────────────────────
+
+export interface VideoUploadResponse {
+  jobId: string;
+}
+
+export interface VideoJobStatus {
+  jobId: string;
+  did: string;
+  state: 'JOB_STATE_CREATED' | 'JOB_STATE_PROCESSING' | 'JOB_STATE_COMPLETED' | 'JOB_STATE_FAILED';
+  progress?: number;
+  blob?: BlobRef;
+  error?: string;
+}
+
+export interface VideoUploadLimits {
+  canUpload: boolean;
+  remainingDailyVideos?: number;
+  remainingDailyBytes?: number;
+  message?: string;
+  error?: string;
+}
+
+// ── Mutes & Blocks ──────────────────────────────────────
+
+export interface MutesResponse {
+  mutes: ProfileViewBasic[];
+  cursor?: string;
+}
+
+export interface BlocksResponse {
+  blocks: ProfileViewBasic[];
+  cursor?: string;
+}
+
+// ── Direct Messages (Phase 3) ───────────────────────────
+
+export interface ConvoView {
+  id: string;
+  rev: string;
+  members: ChatMember[];
+  lastMessage?: ChatMessageView | ChatDeletedMessageView;
+  muted: boolean;
+  unreadCount: number;
+}
+
+export interface ChatMember {
+  did: string;
+  handle: string;
+  displayName?: string;
+  avatar?: string;
+  associated?: { chat?: { allowIncoming: string } };
+  chatDisabled?: boolean;
+}
+
+export interface ChatMessageView {
+  $type: 'chat.bsky.convo.defs#messageView';
+  id: string;
+  rev: string;
+  text: string;
+  facets?: Facet[];
+  embed?: PostEmbed;
+  sender: { did: string };
+  sentAt: string;
+}
+
+export interface ChatDeletedMessageView {
+  $type: 'chat.bsky.convo.defs#deletedMessageView';
+  id: string;
+  rev: string;
+  sender: { did: string };
+  sentAt: string;
+}
+
+export interface ListConvosResponse {
+  convos: ConvoView[];
+  cursor?: string;
+}
+
+export interface GetConvoResponse {
+  convo: ConvoView;
+}
+
+export interface GetMessagesResponse {
+  messages: (ChatMessageView | ChatDeletedMessageView)[];
+  cursor?: string;
+}
+
+export interface SendMessageResponse extends ChatMessageView {}
+
+// ── Custom Feeds (Phase 3) ──────────────────────────────
+
+export interface GeneratorView {
+  uri: string;
+  cid: string;
+  did: string;
+  creator: ProfileViewBasic;
+  displayName: string;
+  description?: string;
+  descriptionFacets?: Facet[];
+  avatar?: string;
+  likeCount?: number;
+  acceptsInteractions?: boolean;
+  labels?: Label[];
+  viewer?: { like?: string };
+  indexedAt: string;
+}
+
+export interface GetFeedGeneratorsResponse {
+  feeds: GeneratorView[];
+}
+
+export interface GetSuggestedFeedsResponse {
+  feeds: GeneratorView[];
+  cursor?: string;
+}
+
+export interface GetFeedResponse {
+  feed: FeedViewPost[];
+  cursor?: string;
+}
+
+export interface SavedFeedsPreference {
+  $type: 'app.bsky.actor.defs#savedFeedsPrefV2';
+  items: SavedFeedItem[];
+}
+
+export interface SavedFeedItem {
+  type: 'feed' | 'list' | 'timeline';
+  value: string;
+  pinned: boolean;
+  id: string;
+}
+
+export interface GetPreferencesResponse {
+  preferences: Array<Record<string, unknown>>;
+}
+
+// ── Lists (Phase 3) ─────────────────────────────────────
+
+export interface ListView {
+  uri: string;
+  cid: string;
+  creator: ProfileViewBasic;
+  name: string;
+  purpose: 'app.bsky.graph.defs#modlist' | 'app.bsky.graph.defs#curatelist' | 'app.bsky.graph.defs#referencelist' | string;
+  description?: string;
+  descriptionFacets?: Facet[];
+  avatar?: string;
+  listItemCount?: number;
+  labels?: Label[];
+  viewer?: { muted?: boolean; blocked?: string };
+  indexedAt: string;
+}
+
+export interface ListItemView {
+  uri: string;
+  subject: ProfileViewBasic;
+}
+
+export interface GetListResponse {
+  list: ListView;
+  items: ListItemView[];
+  cursor?: string;
+}
+
+export interface GetListsResponse {
+  lists: ListView[];
+  cursor?: string;
+}
+
+export interface GetListFeedResponse {
+  feed: FeedViewPost[];
+  cursor?: string;
+}
+
+// ── Bookmarks (Phase 3) ─────────────────────────────────
+
+export interface GetBookmarksResponse {
+  bookmarks: FeedViewPost[];
+  cursor?: string;
+}
+
+// ── Typeahead (Phase 3) ─────────────────────────────────
+
+export interface TypeaheadResponse {
+  actors: ProfileViewBasic[];
 }

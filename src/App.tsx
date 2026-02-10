@@ -1,9 +1,9 @@
 /* ──────────────────────────────────────────────────────────
-   HoboSky v0.1.0 — Main App Component
+   HoboSky v0.3.0 — Main App Component
    ────────────────────────────────────────────────────────── */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Redirect, Route, useLocation } from 'react-router-dom';
+import { Redirect, Route } from 'react-router-dom';
 import {
   IonApp,
   IonIcon,
@@ -19,13 +19,10 @@ import {
 import { IonReactRouter } from '@ionic/react-router';
 import {
   homeOutline,
-  home,
   searchOutline,
-  search,
   notificationsOutline,
-  notifications,
   personOutline,
-  person,
+  chatbubblesOutline,
 } from 'ionicons/icons';
 
 /* Ionic core CSS */
@@ -54,6 +51,12 @@ import SearchPage from './pages/Search';
 import NotificationsPage from './pages/Notifications';
 import ProfilePage from './pages/Profile';
 import PostThreadPage from './pages/PostThread';
+import FollowsListPage from './pages/FollowsList';
+import MutedBlockedPage from './pages/MutedBlocked';
+import MessagesPage, { ChatPage, NewMessagePage } from './pages/Messages';
+import FeedsPage, { FeedDetailPage } from './pages/Feeds';
+import ListsPage, { ListDetailPage } from './pages/Lists';
+import BookmarksPage from './pages/Bookmarks';
 
 /* Services */
 import { api } from './services/api';
@@ -104,12 +107,26 @@ function AppContent() {
 
 function AuthenticatedApp() {
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadDMs, setUnreadDMs] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
 
   const fetchUnread = useCallback(async () => {
     try {
-      const res = await api.getUnreadCount();
-      setUnreadCount(res.count);
+      const [notifRes, convosRes] = await Promise.allSettled([
+        api.getUnreadCount(),
+        api.listConvos(undefined, 25),
+      ]);
+
+      if (notifRes.status === 'fulfilled') {
+        setUnreadCount(notifRes.value.count);
+      }
+      if (convosRes.status === 'fulfilled') {
+        const total = convosRes.value.convos.reduce(
+          (sum, c) => sum + c.unreadCount,
+          0
+        );
+        setUnreadDMs(total);
+      }
     } catch {
       // Silently fail
     }
@@ -117,7 +134,7 @@ function AuthenticatedApp() {
 
   useEffect(() => {
     fetchUnread();
-    pollRef.current = setInterval(fetchUnread, 30000); // Poll every 30s
+    pollRef.current = setInterval(fetchUnread, 30000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
@@ -133,6 +150,16 @@ function AuthenticatedApp() {
           <Route exact path="/profile/:actor" component={ProfilePage} />
           <Route exact path="/profile" component={ProfilePage} />
           <Route exact path="/thread/:uri" component={PostThreadPage} />
+          <Route exact path="/follows/:actor" component={FollowsListPage} />
+          <Route exact path="/moderation" component={MutedBlockedPage} />
+          <Route exact path="/messages" component={MessagesPage} />
+          <Route exact path="/messages/new" component={NewMessagePage} />
+          <Route exact path="/messages/:convoId" component={ChatPage} />
+          <Route exact path="/feeds" component={FeedsPage} />
+          <Route exact path="/feeds/:uri" component={FeedDetailPage} />
+          <Route exact path="/lists" component={ListsPage} />
+          <Route exact path="/lists/:uri" component={ListDetailPage} />
+          <Route exact path="/bookmarks" component={BookmarksPage} />
           <Route exact path="/">
             <Redirect to="/home" />
           </Route>
@@ -149,9 +176,19 @@ function AuthenticatedApp() {
             <IonLabel>Search</IonLabel>
           </IonTabButton>
 
+          <IonTabButton tab="messages" href="/messages">
+            <IonIcon icon={chatbubblesOutline} />
+            <IonLabel>Chat</IonLabel>
+            {unreadDMs > 0 && (
+              <IonBadge color="danger">
+                {unreadDMs > 99 ? '99+' : unreadDMs}
+              </IonBadge>
+            )}
+          </IonTabButton>
+
           <IonTabButton tab="notifications" href="/notifications">
             <IonIcon icon={notificationsOutline} />
-            <IonLabel>Notifications</IonLabel>
+            <IonLabel>Notifs</IonLabel>
             {unreadCount > 0 && (
               <IonBadge color="danger">
                 {unreadCount > 99 ? '99+' : unreadCount}

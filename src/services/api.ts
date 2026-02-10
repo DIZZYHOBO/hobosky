@@ -1,10 +1,11 @@
 /* ──────────────────────────────────────────────────────────
-   HoboSky v0.1.0 — Bluesky AT Protocol API Service
+   HoboSky v0.3.0 — Bluesky AT Protocol API Service
    ────────────────────────────────────────────────────────── */
 
 import type {
   SessionData,
   ProfileViewDetailed,
+  ProfileViewBasic,
   TimelineResponse,
   AuthorFeedResponse,
   ThreadResponse,
@@ -14,6 +15,30 @@ import type {
   UnreadCountResponse,
   UploadBlobResponse,
   CreateRecordResponse,
+  FollowsResponse,
+  FollowersResponse,
+  GetLikesResponse,
+  RepostedByResponse,
+  GetQuotesResponse,
+  VideoJobStatus,
+  VideoUploadLimits,
+  MutesResponse,
+  BlocksResponse,
+  ListConvosResponse,
+  GetConvoResponse,
+  GetMessagesResponse,
+  ChatMessageView,
+  GetFeedGeneratorsResponse,
+  GetSuggestedFeedsResponse,
+  GetFeedResponse,
+  GeneratorView,
+  GetPreferencesResponse,
+  GetListResponse,
+  GetListsResponse,
+  GetListFeedResponse,
+  ListView,
+  GetBookmarksResponse,
+  TypeaheadResponse,
   StrongRef,
   Facet,
   PostEmbed,
@@ -86,7 +111,7 @@ class BlueskyAPI {
   private async request<T>(
     method: 'GET' | 'POST',
     nsid: string,
-    params?: Record<string, string | number | boolean | undefined>,
+    params?: Record<string, string | number | boolean | string[] | undefined>,
     body?: unknown,
     options?: {
       noAuth?: boolean;
@@ -100,7 +125,13 @@ class BlueskyAPI {
     if (method === 'GET' && params) {
       const search = new URLSearchParams();
       Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined && v !== null) search.set(k, String(v));
+        if (v !== undefined && v !== null) {
+          if (Array.isArray(v)) {
+            v.forEach((item) => search.append(k, String(item)));
+          } else {
+            search.set(k, String(v));
+          }
+        }
       });
       const qs = search.toString();
       if (qs) url += `?${qs}`;
@@ -491,6 +522,187 @@ class BlueskyAPI {
     });
   }
 
+  // ── Social Graph ─────────────────────────────────────
+
+  async getFollows(
+    actor: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<FollowsResponse> {
+    return this.request('GET', 'app.bsky.graph.getFollows', {
+      actor,
+      cursor,
+      limit,
+    });
+  }
+
+  async getFollowers(
+    actor: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<FollowersResponse> {
+    return this.request('GET', 'app.bsky.graph.getFollowers', {
+      actor,
+      cursor,
+      limit,
+    });
+  }
+
+  // ── Engagement Lists ────────────────────────────────
+
+  async getLikes(
+    uri: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<GetLikesResponse> {
+    return this.request('GET', 'app.bsky.feed.getLikes', {
+      uri,
+      cursor,
+      limit,
+    });
+  }
+
+  async getRepostedBy(
+    uri: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<RepostedByResponse> {
+    return this.request('GET', 'app.bsky.feed.getRepostedBy', {
+      uri,
+      cursor,
+      limit,
+    });
+  }
+
+  async getQuotes(
+    uri: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<GetQuotesResponse> {
+    return this.request('GET', 'app.bsky.feed.getQuotes', {
+      uri,
+      cursor,
+      limit,
+    });
+  }
+
+  // ── Block / Mute ───────────────────────────────────
+
+  async blockActor(did: string): Promise<CreateRecordResponse> {
+    return this.request('POST', 'com.atproto.repo.createRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.block',
+      record: {
+        $type: 'app.bsky.graph.block',
+        subject: did,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  async unblock(blockUri: string): Promise<void> {
+    const rkey = blockUri.split('/').pop()!;
+    await this.request('POST', 'com.atproto.repo.deleteRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.block',
+      rkey,
+    });
+  }
+
+  async muteActor(did: string): Promise<void> {
+    await this.request('POST', 'app.bsky.graph.muteActor', undefined, {
+      actor: did,
+    });
+  }
+
+  async unmuteActor(did: string): Promise<void> {
+    await this.request('POST', 'app.bsky.graph.unmuteActor', undefined, {
+      actor: did,
+    });
+  }
+
+  async muteThread(root: string): Promise<void> {
+    await this.request('POST', 'app.bsky.graph.muteThread', undefined, {
+      root,
+    });
+  }
+
+  async unmuteThread(root: string): Promise<void> {
+    await this.request('POST', 'app.bsky.graph.unmuteThread', undefined, {
+      root,
+    });
+  }
+
+  async getMutes(cursor?: string, limit = 50): Promise<MutesResponse> {
+    return this.request('GET', 'app.bsky.graph.getMutes', {
+      cursor,
+      limit,
+    });
+  }
+
+  async getBlocks(cursor?: string, limit = 50): Promise<BlocksResponse> {
+    return this.request('GET', 'app.bsky.graph.getBlocks', {
+      cursor,
+      limit,
+    });
+  }
+
+  // ── Reporting ───────────────────────────────────────
+
+  async reportAccount(did: string, reasonType: string, reason?: string): Promise<void> {
+    await this.request('POST', 'com.atproto.moderation.createReport', undefined, {
+      reasonType: `com.atproto.moderation.defs#${reasonType}`,
+      reason,
+      subject: {
+        $type: 'com.atproto.admin.defs#repoRef',
+        did,
+      },
+    });
+  }
+
+  async reportPost(uri: string, cid: string, reasonType: string, reason?: string): Promise<void> {
+    await this.request('POST', 'com.atproto.moderation.createReport', undefined, {
+      reasonType: `com.atproto.moderation.defs#${reasonType}`,
+      reason,
+      subject: {
+        $type: 'com.atproto.repo.strongRef',
+        uri,
+        cid,
+      },
+    });
+  }
+
+  // ── Video Upload ────────────────────────────────────
+
+  async getVideoUploadLimits(): Promise<VideoUploadLimits> {
+    return this.request('GET', 'app.bsky.video.getUploadLimits');
+  }
+
+  async uploadVideo(file: File): Promise<{ jobId: string }> {
+    const buffer = await file.arrayBuffer();
+    return this.request(
+      'POST',
+      'app.bsky.video.uploadVideo',
+      undefined,
+      undefined,
+      {
+        rawBody: buffer,
+        contentType: file.type || 'video/mp4',
+        proxy: `did:web:video.bsky.app#bsky_fg`,
+      }
+    );
+  }
+
+  async getVideoJobStatus(jobId: string): Promise<{ jobStatus: VideoJobStatus }> {
+    return this.request(
+      'GET',
+      'app.bsky.video.getJobStatus',
+      { jobId },
+      undefined,
+      { proxy: `did:web:video.bsky.app#bsky_fg` }
+    );
+  }
+
   // ── Media Upload ────────────────────────────────────
 
   async uploadBlob(
@@ -586,6 +798,234 @@ class BlueskyAPI {
     }
 
     return resolved;
+  }
+
+  // ── Direct Messages (Phase 3) ────────────────────────
+
+  async listConvos(cursor?: string, limit = 25): Promise<ListConvosResponse> {
+    return this.request('GET', 'chat.bsky.convo.listConvos', {
+      cursor,
+      limit,
+    }, undefined, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async getConvo(convoId: string): Promise<GetConvoResponse> {
+    return this.request('GET', 'chat.bsky.convo.getConvo', {
+      convoId,
+    }, undefined, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async getConvoForMembers(members: string[]): Promise<GetConvoResponse> {
+    return this.request('GET', 'chat.bsky.convo.getConvoForMembers', {
+      members,
+    }, undefined, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async getMessages(
+    convoId: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<GetMessagesResponse> {
+    return this.request('GET', 'chat.bsky.convo.getMessages', {
+      convoId,
+      cursor,
+      limit,
+    }, undefined, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async sendMessage(convoId: string, text: string): Promise<ChatMessageView> {
+    const facets = this.detectFacets(text);
+    return this.request('POST', 'chat.bsky.convo.sendMessage', undefined, {
+      convoId,
+      message: {
+        $type: 'chat.bsky.convo.defs#messageInput',
+        text,
+        facets: facets.length > 0 ? facets : undefined,
+      },
+    }, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async deleteMessage(convoId: string, messageId: string): Promise<void> {
+    await this.request('POST', 'chat.bsky.convo.deleteMessageForSelf', undefined, {
+      convoId,
+      messageId,
+    }, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async muteConvo(convoId: string): Promise<GetConvoResponse> {
+    return this.request('POST', 'chat.bsky.convo.muteConvo', undefined, {
+      convoId,
+    }, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async unmuteConvo(convoId: string): Promise<GetConvoResponse> {
+    return this.request('POST', 'chat.bsky.convo.unmuteConvo', undefined, {
+      convoId,
+    }, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  async updateConvoRead(convoId: string): Promise<GetConvoResponse> {
+    return this.request('POST', 'chat.bsky.convo.updateRead', undefined, {
+      convoId,
+    }, { proxy: 'did:web:api.bsky.chat#bsky_chat' });
+  }
+
+  // ── Custom Feeds (Phase 3) ──────────────────────────
+
+  async getFeed(
+    feed: string,
+    cursor?: string,
+    limit = 30
+  ): Promise<GetFeedResponse> {
+    return this.request('GET', 'app.bsky.feed.getFeed', {
+      feed,
+      cursor,
+      limit,
+    });
+  }
+
+  async getFeedGenerator(feed: string): Promise<{ view: GeneratorView }> {
+    return this.request('GET', 'app.bsky.feed.getFeedGenerator', { feed });
+  }
+
+  async getFeedGenerators(feeds: string[]): Promise<GetFeedGeneratorsResponse> {
+    return this.request('GET', 'app.bsky.feed.getFeedGenerators', { feeds });
+  }
+
+  async getSuggestedFeeds(cursor?: string, limit = 50): Promise<GetSuggestedFeedsResponse> {
+    return this.request('GET', 'app.bsky.feed.getSuggestedFeeds', {
+      cursor,
+      limit,
+    });
+  }
+
+  async getPopularFeedGenerators(
+    query?: string,
+    cursor?: string,
+    limit = 25
+  ): Promise<GetSuggestedFeedsResponse> {
+    return this.request('GET', 'app.bsky.unspecced.getPopularFeedGenerators', {
+      query,
+      cursor,
+      limit,
+    });
+  }
+
+  async getPreferences(): Promise<GetPreferencesResponse> {
+    return this.request('GET', 'app.bsky.actor.getPreferences');
+  }
+
+  async likeFeed(uri: string, cid: string): Promise<CreateRecordResponse> {
+    return this.like({ uri, cid });
+  }
+
+  async unlikeFeed(likeUri: string): Promise<void> {
+    return this.unlike(likeUri);
+  }
+
+  // ── Lists (Phase 3) ────────────────────────────────
+
+  async getList(
+    list: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<GetListResponse> {
+    return this.request('GET', 'app.bsky.graph.getList', {
+      list,
+      cursor,
+      limit,
+    });
+  }
+
+  async getLists(
+    actor: string,
+    cursor?: string,
+    limit = 50
+  ): Promise<GetListsResponse> {
+    return this.request('GET', 'app.bsky.graph.getLists', {
+      actor,
+      cursor,
+      limit,
+    });
+  }
+
+  async getListFeed(
+    list: string,
+    cursor?: string,
+    limit = 30
+  ): Promise<GetListFeedResponse> {
+    return this.request('GET', 'app.bsky.feed.getListFeed', {
+      list,
+      cursor,
+      limit,
+    });
+  }
+
+  async createList(
+    name: string,
+    purpose: string,
+    description?: string
+  ): Promise<CreateRecordResponse> {
+    return this.request('POST', 'com.atproto.repo.createRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.list',
+      record: {
+        $type: 'app.bsky.graph.list',
+        name,
+        purpose,
+        description,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  async deleteList(listUri: string): Promise<void> {
+    const rkey = listUri.split('/').pop()!;
+    await this.request('POST', 'com.atproto.repo.deleteRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.list',
+      rkey,
+    });
+  }
+
+  async addToList(listUri: string, subject: string): Promise<CreateRecordResponse> {
+    return this.request('POST', 'com.atproto.repo.createRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.listitem',
+      record: {
+        $type: 'app.bsky.graph.listitem',
+        subject,
+        list: listUri,
+        createdAt: new Date().toISOString(),
+      },
+    });
+  }
+
+  async removeFromList(itemUri: string): Promise<void> {
+    const rkey = itemUri.split('/').pop()!;
+    await this.request('POST', 'com.atproto.repo.deleteRecord', undefined, {
+      repo: this.session!.did,
+      collection: 'app.bsky.graph.listitem',
+      rkey,
+    });
+  }
+
+  // ── Bookmarks (Phase 3) ────────────────────────────
+
+  async getBookmarks(cursor?: string, limit = 25): Promise<GetBookmarksResponse> {
+    return this.request('GET', 'app.bsky.feed.getActorBookmarks' as string, {
+      cursor,
+      limit,
+    });
+  }
+
+  // ── Typeahead (Phase 3) ────────────────────────────
+
+  async searchActorsTypeahead(q: string, limit = 8): Promise<TypeaheadResponse> {
+    return this.request('GET', 'app.bsky.actor.searchActorsTypeahead', {
+      q,
+      limit,
+    });
   }
 }
 

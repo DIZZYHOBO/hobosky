@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────
-   HoboSky v0.1.0 — Profile Page
+   HoboSky v0.2.0 — Profile Page
    ────────────────────────────────────────────────────────── */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -22,25 +22,38 @@ import {
   IonRefresherContent,
   IonIcon,
   useIonToast,
-  useIonActionSheet,
 } from '@ionic/react';
-import { useParams } from 'react-router-dom';
-import { logOutOutline, ellipsisHorizontal } from 'ionicons/icons';
+import { useParams, useHistory } from 'react-router-dom';
+import {
+  logOutOutline,
+  ellipsisHorizontal,
+  shieldOutline,
+  bookmarkOutline,
+  listOutline,
+  gridOutline,
+  chatbubblesOutline,
+} from 'ionicons/icons';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import type { ProfileViewDetailed, FeedViewPost } from '../types';
 import PostCard from '../components/PostCard';
+import UserActionsSheet from '../components/UserActionsSheet';
 import { formatCount, DEFAULT_AVATAR } from '../utils';
 
-type FeedFilter = 'posts_with_replies' | 'posts_no_replies' | 'posts_with_media' | 'likes';
+type FeedFilter =
+  | 'posts_with_replies'
+  | 'posts_no_replies'
+  | 'posts_with_media'
+  | 'likes';
 
 export default function ProfilePage() {
   const { actor } = useParams<{ actor: string }>();
   const { session, logout } = useAuth();
+  const history = useHistory();
   const [present] = useIonToast();
-  const [presentActionSheet] = useIonActionSheet();
 
-  const isOwnProfile = !actor || actor === session?.did || actor === session?.handle;
+  const isOwnProfile =
+    !actor || actor === session?.did || actor === session?.handle;
   const actorId = actor || session?.did || '';
 
   const [profile, setProfile] = useState<ProfileViewDetailed | null>(null);
@@ -48,10 +61,13 @@ export default function ProfilePage() {
   const [cursor, setCursor] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
   const [feedLoading, setFeedLoading] = useState(false);
-  const [feedFilter, setFeedFilter] = useState<FeedFilter>('posts_with_replies');
+  const [feedFilter, setFeedFilter] = useState<FeedFilter>(
+    'posts_with_replies'
+  );
 
   const [following, setFollowing] = useState(false);
   const [followUri, setFollowUri] = useState('');
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const loadProfile = useCallback(async () => {
     if (!actorId) return;
@@ -74,7 +90,11 @@ export default function ProfilePage() {
       try {
         let res;
         if (feedFilter === 'likes') {
-          res = await api.getActorLikes(actorId, reset ? undefined : cursor, 50);
+          res = await api.getActorLikes(
+            actorId,
+            reset ? undefined : cursor,
+            50
+          );
         } else {
           res = await api.getAuthorFeed(
             actorId,
@@ -158,20 +178,8 @@ export default function ProfilePage() {
   }, [following, followUri, profile]);
 
   const handleLogout = useCallback(async () => {
-    presentActionSheet({
-      header: 'Sign out of HoboSky?',
-      buttons: [
-        {
-          text: 'Sign Out',
-          role: 'destructive',
-          handler: async () => {
-            await logout();
-          },
-        },
-        { text: 'Cancel', role: 'cancel' },
-      ],
-    });
-  }, [logout, presentActionSheet]);
+    await logout();
+  }, [logout]);
 
   return (
     <IonPage>
@@ -180,16 +188,29 @@ export default function ProfilePage() {
           <IonButtons slot="start">
             <IonBackButton defaultHref="/home" />
           </IonButtons>
-          <IonTitle style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 17 }}>
+          <IonTitle
+            style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 17 }}
+          >
             {profile?.displayName || profile?.handle || 'Profile'}
           </IonTitle>
-          {isOwnProfile && (
-            <IonButtons slot="end">
-              <IonButton onClick={handleLogout}>
-                <IonIcon icon={logOutOutline} />
+          <IonButtons slot="end">
+            {isOwnProfile ? (
+              <>
+                <IonButton
+                  onClick={() => history.push('/moderation')}
+                >
+                  <IonIcon icon={shieldOutline} />
+                </IonButton>
+                <IonButton onClick={handleLogout}>
+                  <IonIcon icon={logOutOutline} />
+                </IonButton>
+              </>
+            ) : profile ? (
+              <IonButton onClick={() => setActionsOpen(true)}>
+                <IonIcon icon={ellipsisHorizontal} />
               </IonButton>
-            </IonButtons>
-          )}
+            ) : null}
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
 
@@ -204,6 +225,40 @@ export default function ProfilePage() {
           </div>
         ) : profile ? (
           <>
+            {/* Blocked banner */}
+            {profile.viewer?.blocking && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  borderBottom: '1px solid var(--hb-border)',
+                  fontSize: 13,
+                  color: 'var(--hb-like)',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                }}
+              >
+                You have blocked this account
+              </div>
+            )}
+
+            {/* Muted banner */}
+            {profile.viewer?.muted && !profile.viewer?.blocking && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  borderBottom: '1px solid var(--hb-border)',
+                  fontSize: 13,
+                  color: 'var(--hb-bookmark)',
+                  fontWeight: 600,
+                  textAlign: 'center',
+                }}
+              >
+                You have muted this account
+              </div>
+            )}
+
             {/* Banner */}
             {profile.banner ? (
               <img className="profile-banner" src={profile.banner} alt="" />
@@ -253,12 +308,31 @@ export default function ProfilePage() {
                 <div className="profile-bio">{profile.description}</div>
               )}
 
+              {/* Tappable stats linking to followers/following */}
               <div className="profile-stats">
-                <span className="profile-stat">
-                  <strong>{formatCount(profile.followsCount)}</strong> following
+                <span
+                  className="profile-stat"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() =>
+                    history.push(
+                      `/follows/${profile.did}?tab=following`
+                    )
+                  }
+                >
+                  <strong>{formatCount(profile.followsCount)}</strong>{' '}
+                  following
                 </span>
-                <span className="profile-stat">
-                  <strong>{formatCount(profile.followersCount)}</strong> followers
+                <span
+                  className="profile-stat"
+                  style={{ cursor: 'pointer' }}
+                  onClick={() =>
+                    history.push(
+                      `/follows/${profile.did}?tab=followers`
+                    )
+                  }
+                >
+                  <strong>{formatCount(profile.followersCount)}</strong>{' '}
+                  followers
                 </span>
                 <span className="profile-stat">
                   <strong>{formatCount(profile.postsCount)}</strong> posts
@@ -280,13 +354,89 @@ export default function ProfilePage() {
                   Follows you
                 </div>
               )}
+
+              {/* Quick access buttons (own profile) */}
+              {isOwnProfile && (
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 8,
+                    marginTop: 14,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  {[
+                    { icon: gridOutline, label: 'Feeds', path: '/feeds' },
+                    { icon: listOutline, label: 'Lists', path: '/lists' },
+                    { icon: bookmarkOutline, label: 'Bookmarks', path: '/bookmarks' },
+                  ].map((item) => (
+                    <IonButton
+                      key={item.path}
+                      fill="outline"
+                      size="small"
+                      onClick={() => history.push(item.path)}
+                      style={{
+                        '--border-radius': '10px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        minHeight: 32,
+                      }}
+                    >
+                      <IonIcon icon={item.icon} slot="start" style={{ fontSize: 15 }} />
+                      {item.label}
+                    </IonButton>
+                  ))}
+                </div>
+              )}
+
+              {/* Message button (other profiles) */}
+              {!isOwnProfile && (
+                <div style={{ marginTop: 10 }}>
+                  <IonButton
+                    fill="outline"
+                    size="small"
+                    onClick={() => {
+                      api.getConvoForMembers([profile.did])
+                        .then((res) => history.push(`/messages/${res.convo.id}`))
+                        .catch(() => present({ message: 'Failed to open chat', duration: 2000, position: 'top', color: 'danger' }));
+                    }}
+                    style={{
+                      '--border-radius': '10px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      minHeight: 32,
+                    }}
+                  >
+                    <IonIcon icon={chatbubblesOutline} slot="start" style={{ fontSize: 15 }} />
+                    Message
+                  </IonButton>
+                </div>
+              )}
+
+              {profile.viewer?.blockedBy && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: '4px 10px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: 'var(--hb-like)',
+                    display: 'inline-block',
+                  }}
+                >
+                  This user has blocked you
+                </div>
+              )}
             </div>
 
             {/* Feed Filter */}
             <div style={{ padding: '0 16px 12px' }}>
               <IonSegment
                 value={feedFilter}
-                onIonChange={(e) => setFeedFilter(e.detail.value as FeedFilter)}
+                onIonChange={(e) =>
+                  setFeedFilter(e.detail.value as FeedFilter)
+                }
               >
                 <IonSegmentButton value="posts_with_replies">
                   <IonLabel>Posts</IonLabel>
@@ -330,6 +480,16 @@ export default function ProfilePage() {
           <div className="empty-state">
             <h3>Profile not found</h3>
           </div>
+        )}
+
+        {/* User Actions Sheet (block/mute/report) */}
+        {profile && !isOwnProfile && (
+          <UserActionsSheet
+            isOpen={actionsOpen}
+            onDismiss={() => setActionsOpen(false)}
+            profile={profile}
+            onUpdate={loadProfile}
+          />
         )}
       </IonContent>
     </IonPage>

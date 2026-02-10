@@ -1,5 +1,5 @@
 /* ──────────────────────────────────────────────────────────
-   HoboSky v0.1.0 — Post Thread Page
+   HoboSky v0.2.0 — Post Thread Page
    ────────────────────────────────────────────────────────── */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -15,25 +15,26 @@ import {
   IonButton,
   IonIcon,
 } from '@ionic/react';
-import { useParams } from 'react-router-dom';
+import { useParams, useHistory } from 'react-router-dom';
 import {
   chatbubbleOutline,
   repeatOutline,
   heartOutline,
   heart,
   repeat,
+  ellipsisHorizontal,
 } from 'ionicons/icons';
 import { api } from '../services/api';
-import type { ThreadViewPost, PostView } from '../types';
+import type { ThreadViewPost } from '../types';
 import PostCard from '../components/PostCard';
 import ComposeModal from '../components/ComposeModal';
+import LikesRepostsModal from '../components/LikesRepostsModal';
+import PostActionsSheet from '../components/PostActionsSheet';
 import {
-  timeAgo,
   formatCount,
   renderTextWithFacets,
   DEFAULT_AVATAR,
 } from '../utils';
-import { useHistory } from 'react-router-dom';
 
 export default function PostThreadPage() {
   const { uri } = useParams<{ uri: string }>();
@@ -51,6 +52,13 @@ export default function PostThreadPage() {
   const [reposted, setReposted] = useState(false);
   const [repostUri, setRepostUri] = useState('');
   const [repostCount, setRepostCount] = useState(0);
+
+  // Phase 2 state
+  const [engagementOpen, setEngagementOpen] = useState(false);
+  const [engagementTab, setEngagementTab] = useState<
+    'likes' | 'reposts' | 'quotes'
+  >('likes');
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const loadThread = useCallback(async () => {
     setLoading(true);
@@ -132,6 +140,14 @@ export default function PostThreadPage() {
     }
   }, [reposted, repostUri, thread]);
 
+  const openEngagement = useCallback(
+    (tab: 'likes' | 'reposts' | 'quotes') => {
+      setEngagementTab(tab);
+      setEngagementOpen(true);
+    },
+    []
+  );
+
   // Collect parent chain
   const parents: ThreadViewPost[] = [];
   if (thread) {
@@ -154,9 +170,18 @@ export default function PostThreadPage() {
           <IonButtons slot="start">
             <IonBackButton defaultHref="/home" />
           </IonButtons>
-          <IonTitle style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 17 }}>
+          <IonTitle
+            style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 17 }}
+          >
             Post
           </IonTitle>
+          {mainPost && (
+            <IonButtons slot="end">
+              <IonButton onClick={() => setActionsOpen(true)}>
+                <IonIcon icon={ellipsisHorizontal} />
+              </IonButton>
+            </IonButtons>
+          )}
         </IonToolbar>
       </IonHeader>
 
@@ -194,12 +219,16 @@ export default function PostThreadPage() {
 
             {/* Main post (expanded) */}
             <div className="thread-main-post">
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div
+                style={{ display: 'flex', gap: 12, alignItems: 'center' }}
+              >
                 <img
                   className="post-avatar"
                   src={mainPost.author.avatar || DEFAULT_AVATAR}
                   alt=""
-                  onClick={() => history.push(`/profile/${mainPost.author.did}`)}
+                  onClick={() =>
+                    history.push(`/profile/${mainPost.author.did}`)
+                  }
                   style={{ cursor: 'pointer' }}
                 />
                 <div>
@@ -212,7 +241,9 @@ export default function PostThreadPage() {
                   >
                     {mainPost.author.displayName || mainPost.author.handle}
                   </div>
-                  <div className="post-handle">@{mainPost.author.handle}</div>
+                  <div className="post-handle">
+                    @{mainPost.author.handle}
+                  </div>
                 </div>
               </div>
 
@@ -245,26 +276,41 @@ export default function PostThreadPage() {
                 })}
               </div>
 
-              {(likeCount > 0 || repostCount > 0 || (mainPost.replyCount ?? 0) > 0) && (
+              {/* Tappable engagement stats */}
+              {(likeCount > 0 ||
+                repostCount > 0 ||
+                (mainPost.replyCount ?? 0) > 0 ||
+                (mainPost.quoteCount ?? 0) > 0) && (
                 <div className="thread-main-stats">
                   {(mainPost.replyCount ?? 0) > 0 && (
                     <span>
-                      <strong>{formatCount(mainPost.replyCount)}</strong> replies
+                      <strong>{formatCount(mainPost.replyCount)}</strong>{' '}
+                      replies
                     </span>
                   )}
                   {repostCount > 0 && (
-                    <span>
+                    <span
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => openEngagement('reposts')}
+                    >
                       <strong>{formatCount(repostCount)}</strong> reposts
                     </span>
                   )}
                   {likeCount > 0 && (
-                    <span>
+                    <span
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => openEngagement('likes')}
+                    >
                       <strong>{formatCount(likeCount)}</strong> likes
                     </span>
                   )}
                   {(mainPost.quoteCount ?? 0) > 0 && (
-                    <span>
-                      <strong>{formatCount(mainPost.quoteCount)}</strong> quotes
+                    <span
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => openEngagement('quotes')}
+                    >
+                      <strong>{formatCount(mainPost.quoteCount)}</strong>{' '}
+                      quotes
                     </span>
                   )}
                 </div>
@@ -272,7 +318,10 @@ export default function PostThreadPage() {
 
               <div
                 className="post-actions"
-                style={{ borderTop: '1px solid var(--hb-border)', paddingTop: 8 }}
+                style={{
+                  borderTop: '1px solid var(--hb-border)',
+                  paddingTop: 8,
+                }}
               >
                 <button
                   className="post-action-btn reply-btn"
@@ -317,15 +366,20 @@ export default function PostThreadPage() {
               <PostCard key={r.post.uri} post={r.post} isThread />
             ))}
 
+            {/* Compose Reply Modal */}
             <ComposeModal
               isOpen={composeOpen}
               onDismiss={() => setComposeOpen(false)}
               replyTo={{
                 uri: mainPost.uri,
                 cid: mainPost.cid,
-                root: parents.length > 0
-                  ? { uri: parents[0].post.uri, cid: parents[0].post.cid }
-                  : undefined,
+                root:
+                  parents.length > 0
+                    ? {
+                        uri: parents[0].post.uri,
+                        cid: parents[0].post.cid,
+                      }
+                    : undefined,
                 author: {
                   handle: mainPost.author.handle,
                   displayName: mainPost.author.displayName,
@@ -333,6 +387,26 @@ export default function PostThreadPage() {
                 text: mainPost.record.text,
               }}
               onSuccess={loadThread}
+            />
+
+            {/* Likes/Reposts/Quotes Modal */}
+            <LikesRepostsModal
+              isOpen={engagementOpen}
+              onDismiss={() => setEngagementOpen(false)}
+              postUri={mainPost.uri}
+              postCid={mainPost.cid}
+              initialTab={engagementTab}
+              likeCount={likeCount}
+              repostCount={repostCount}
+              quoteCount={mainPost.quoteCount ?? 0}
+            />
+
+            {/* Post Actions Sheet */}
+            <PostActionsSheet
+              isOpen={actionsOpen}
+              onDismiss={() => setActionsOpen(false)}
+              post={mainPost}
+              onDeleted={() => history.goBack()}
             />
           </>
         ) : null}
