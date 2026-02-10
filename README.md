@@ -1,4 +1,4 @@
-# HoboSky v0.1.0
+sfsfds# HoboSky v0.1.0
 
 A modern Bluesky web client built with Ionic React, served via Deno Deploy.
 
@@ -28,7 +28,7 @@ npm install
 
 # Run dev server
 npm run dev
-
+sadsadasdasdas
 # Build for production
 npm run build
 
